@@ -98,21 +98,35 @@ Function Switch-Input {
         [string]$URL,
         [string]$Command
     )
-    Write-Host "URL Query: ""$URL"""
+   # Write-Host "URL Query: ""$URL""" # DEBUG
     If ($Command) {SendRt4k -Commands $Command}
     Start-Sleep -Milliseconds 50
-    Invoke-RestMethod -Uri $URL -Method Get
+    
+    try {
+        $response = (Invoke-RestMethod -Uri $URL -Method Get -TimeoutSec 2)
+    } catch {
+        Write-Host "Unable to contact switch"
+        PurgeGlobalTimer
+        $form.Close()
+        Exit 1
+    }
 }
 
 
 Function Update-Labels
 {
-    $CurrPorts      = (Invoke-RestMethod -Uri "http://$GamesCareIP/ports" -Method Get)
+  try {
+        $CurrPorts      = (Invoke-RestMethod -Uri "http://$GamesCareIP/ports" -Method Get  -TimeoutSec 2 )
+    } catch {
+        Write-Host "Unable to contact switch"
+        PurgeGlobalTimer
+        $form.Close()
+        Exit 1
+    }
+    
     $Labels         = $CurrPorts.Ports
     $Active         = $CurrPorts.Active
     If ($portsel -ne $Active) {
-        Write-Host "Active: $Active"
-        Write-Host "PortSel: $PortSel"
         If (($Active -eq 0) -or ($NULL -eq $portsel)){ 
             Write-Host "No active ports - Switching to Auto Detect"
             Switch-Input -URL "http://$GamesCareIP/ports?force=$Active"
@@ -374,6 +388,7 @@ Clear-Host
 $SwitchName = "gcswitch.local" # gcswitch is the default, change if necessary.
 #$GamesCareIP = "10.0.1.125" # Uncomment this and set IP appropriately if switch is not detected via DNS.
 
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -392,6 +407,6 @@ If ($GamesCareIP)
         Exit 1
     }
 
-
+    
 Select-Input
 
