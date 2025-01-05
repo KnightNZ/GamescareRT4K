@@ -65,7 +65,6 @@ Function SendRt4K {
 
         # Debug output for the argument
         # Write-Host "Passed argument for input: '$Command'" -ForegroundColor Yellow
-
         # Check if the input argument was provided
         if ([string]::IsNullOrEmpty($Command)) {
             Write-Host "Error: No hex string provided. Please run with -Input 'HexString'." -ForegroundColor Red
@@ -81,15 +80,12 @@ Function SendRt4K {
 
         # Check if the input is a valid command
         if ($validCommands -contains $Command) {
-            # Prepend "remote" to the command
             $Command = "remote $Command`n"
         } else {
             Write-Host "Unknown command: '$Command'. Please enter a valid command." -ForegroundColor Red
             exit 1
         }
-    
-        # Call the function to send the serial command
-        Send-SerialCommand -Command $Command
+        Send-SerialCommand -Command $Command    # Call the function to send the serial command
     }
 }
 
@@ -149,6 +145,14 @@ Function Update-Labels {
         If ($PortDetected -eq "True") {$Status = " (*)"} ELSE {$Status = ""}
       #  Write-Host "Port we're checking: $PortName (Array entry #$i) *DEBUG"
 
+        # Intent here:
+        #
+        # If a port is active and selected, and it becomes inactive, revert to auto-detect mode.
+        #
+        # If the port was previously changed via auto-switching, then a port becoming inactive will cause this switch to fall back to the last active input anyway.
+        #
+        # Do we want to revert to auto-detect, or leave the switch in "Manual" mode in this case!?
+
     #    If (($PortDetected -eq "False") -and ($SelectedPort -eq $i)) { # Currently selected port has become inactive - revert to autodetect mode and return detected port if one is detected
     #        Write-Host "Port $SelectedPort selected but not active, reverting to AutoDetect"
     #        $ActivePort = (invoke-restmethod -uri http://10.0.1.125/ports?force=0).active
@@ -198,6 +202,7 @@ Function Select-Input {
     $label.BackColor        = [System.Drawing.Color]::FromName("Transparent")
     $label.ForeColor        = [System.Drawing.Color]::Black
     $form.Controls.Add($label) # Not really needed as we're dynamically updating the buttons.
+
 
     #GamesCare Button 1
     $GCbutton1              = New-Object System.Windows.Forms.Button
@@ -354,48 +359,35 @@ Function Select-Input {
     $RtButton7.Add_Click({SendRt4k -Commands "res480p", "right", "ok" -Text "480p"})
     $form.Controls.Add($RtButton7)
 
-
     # Background image
     $Image                      = [system.drawing.image]::FromFile("$PSScriptRoot\GamesCareBG.png") 
     $Form.BackgroundImage       = $Image
     $Form.BackgroundImageLayout = "Center"
 
     # Add timer to auto-refresh the form every couple of seconds to detect automatic switch input changes
-
-    # Check if $Timer exists, stop it, and dispose of it
-    PurgeGlobalTimer
-
+    PurgeGlobalTimer    # Check if $Timer exists, stop it, and dispose of it
     $Global:Timer           = New-Object System.Windows.Forms.Timer
     $Global:Timer.Interval  = 2000 # 2000 = 2 seconds between queries
     $Global:Timer.Add_Tick({Update-Labels})
-
     $global:Timer.Start()
 
-    # Cleanup timer or it will may remain active depending on launch method.
-    $Form.Add_FormClosed({PurgeGlobalTimer})
+    $Form.Add_FormClosed({PurgeGlobalTimer})    # Cleanup timer or it will may remain active depending on launch method.
     
     # Show the form
-    #Switch-Input -URL "http://$GamesCareIP/ports" # Perform initial port query
-    Update-Labels
+    Update-Labels # Initial port detection and labelling scan.
     $form.Add_Shown
     [void]$form.ShowDialog()
 }
-    
-    
-# Main Loop
 
-Clear-Host
+# Main Loop
 
 $SwitchName = "gcswitch.local" # gcswitch is the default, change if necessary.
 #$GamesCareIP = "10.0.1.125" # Uncomment this and set IP appropriately if switch is not detected via DNS.
-
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 Write-Host "Searching for GamesCare switch on local network...`n"
-
-#If (Test-Connection $GamesCareIP -Count 1 -ErrorAction SilentlyContinue) {$SwitchName = $GamesCareIP}
 
 $Script:GamesCareIP = (Test-Connection $SwitchName -Count 1 -ErrorAction SilentlyContinue).IPV4Address.IPAddressToString
 If ($GamesCareIP) 
@@ -408,6 +400,4 @@ If ($GamesCareIP)
         Exit 1
     }
 
-    
 Select-Input
-
