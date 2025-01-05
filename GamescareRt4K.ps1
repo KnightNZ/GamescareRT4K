@@ -103,61 +103,74 @@ Function Switch-Input {
     Start-Sleep -Milliseconds 50
     
     try {
-        $response = (Invoke-RestMethod -Uri $URL -Method Get -TimeoutSec 2)
+        $response = (Invoke-RestMethod -Uri $URL -Method Get -TimeoutSec 2) # timeout shouldn't need to be more than ~1 second unless there are network problems
     } catch {
         Write-Host "Unable to contact switch"
         PurgeGlobalTimer
         $form.Close()
         Exit 1
     }
+    Return $response
 }
 
 
-Function Update-Labels
-{
+Function Update-Labels {
   try {
-        $CurrPorts      = (Invoke-RestMethod -Uri "http://$GamesCareIP/ports" -Method Get  -TimeoutSec 2 )
+        $SwitchPorts      = (Invoke-RestMethod -Uri "http://$GamesCareIP/ports" -Method Get  -TimeoutSec 2 )
     } catch {
         Write-Host "Unable to contact switch"
         PurgeGlobalTimer
         $form.Close()
         Exit 1
     }
-    
-    $Labels         = $CurrPorts.Ports
-    $Active         = $CurrPorts.Active
-    If ($portsel -ne $Active) {
-        If (($Active -eq 0) -or ($NULL -eq $portsel)){ 
-            Write-Host "No active ports - Switching to Auto Detect"
-            Switch-Input -URL "http://$GamesCareIP/ports?force=$Active"
+
+    $Ports             = $SwitchPorts.Ports
+    $ActivePort         = $SwitchPorts.Active
+    If ($SelectedPort -ne $ActivePort) { # Port change detected, either explicit or via Auto-switch
+        If ($ActivePort -eq 0) { # Auto-detect active, but no active devices found by the switch to auto-switch to
+           # Write-Host "No active ports - Auto Detect active *DEBUG"
             $GCButton0.Text = "Auto Detect (A)"
         }
-        else {        
-            Write-Host "Port change to port $Active Detected"
-            Switch-Input -URL "http://$GamesCareIP/ports?force=$Active" -Command "prof$($Active)"
+        ELSE { # Port has changed since last check, update UI and trigger Rt4K profile change to match 
+            $Script:SelectedPort = $ActivePort
+            Write-Host "Port change to port $ActivePort Detected" # Deliberate port change
+            SendRt4k -Commands "prof$($ActivePort)" # Port is either already changed, or Auto Detect is active - leave ports alone, trigger Rt4K only.
             $GCButton0.Text = "Auto Detect"
         }
     }
+
+#Write-Host "Current Active Port: $ActivePort *DEBUG"
+#Write-Host "Current Selected Port: $SelectedPort *DEBUG"
+
     for ($i = 0; $i -lt 8; $i++) {
-        $Title = $Labels[$i].Title
-        If ([string]::IsNullOrEmpty($Title)) {$Title = "Port $($i+1)"}
-        $Detected = $Labels[$i].Detected
-        If ($Detected -eq "True") {$Status = " (*)"} ELSE {$Status = ""}
-        If  ($i+1 -eq $Active) {$Status = $Status + " (A)"}
-        $Label = "$($i+1): " + $Title + $Status
-        switch ($i) {
-            0 { If ($GCButton1.Text -ne $Label) {$GCButton1.Text = $Label}}
-            1 { If ($GCButton2.Text -ne $Label) {$GCButton2.Text = $Label}}
-            2 { If ($GCButton3.Text -ne $Label) {$GCButton3.Text = $Label}}
-            3 { If ($GCButton4.Text -ne $Label) {$GCButton4.Text = $Label}}
-            4 { If ($GCButton5.Text -ne $Label) {$GCButton5.Text = $Label}}
-            5 { If ($GCButton6.Text -ne $Label) {$GCButton6.Text = $Label}}
-            6 { If ($GCButton7.Text -ne $Label) {$GCButton7.Text = $Label}}
-            7 { If ($GCButton8.Text -ne $Label) {$GCButton8.Text = $Label}}
+        $PortName = $Ports[$i].Title
+        If ([string]::IsNullOrEmpty($PortName)) {$PortName = "Port $($i+1)"}
+        $PortDetected = $Ports[$i].Detected
+        If ($PortDetected -eq "True") {$Status = " (*)"} ELSE {$Status = ""}
+      #  Write-Host "Port we're checking: $PortName (Array entry #$i) *DEBUG"
+
+    #    If (($PortDetected -eq "False") -and ($SelectedPort -eq $i)) { # Currently selected port has become inactive - revert to autodetect mode and return detected port if one is detected
+    #        Write-Host "Port $SelectedPort selected but not active, reverting to AutoDetect"
+    #        $ActivePort = (invoke-restmethod -uri http://10.0.1.125/ports?force=0).active
+    #        $SelectedPort = $ActivePort
+    #        Write-Host "Switching to port $ActivePort"
+    #      }
+
+        If  ($i+1 -eq $ActivePort) {$Status = $Status + " (A)"}
+        $Label = "$($i+1): " + $PortName + $Status
+        switch ($i+1) {
+            1 { If ($GCButton1.Text -ne $Label) {$GCButton1.Text = $Label}}
+            2 { If ($GCButton2.Text -ne $Label) {$GCButton2.Text = $Label}}
+            3 { If ($GCButton3.Text -ne $Label) {$GCButton3.Text = $Label}}
+            4 { If ($GCButton4.Text -ne $Label) {$GCButton4.Text = $Label}}
+            5 { If ($GCButton5.Text -ne $Label) {$GCButton5.Text = $Label}}
+            6 { If ($GCButton6.Text -ne $Label) {$GCButton6.Text = $Label}}
+            7 { If ($GCButton7.Text -ne $Label) {$GCButton7.Text = $Label}}
+            8 { If ($GCButton8.Text -ne $Label) {$GCButton8.Text = $Label}}
             }
     }
-    $script:label.Text = "Current Port: $Active"
-    $Script:Portsel = $Active
+    $script:label.Text = "Current Port: $ActivePort"
+    $Script:Portsel = $ActivePort
 }
 
 Function PurgeGlobalTimer
@@ -191,7 +204,7 @@ Function Select-Input {
     $GCbutton1.Size         = New-Object System.Drawing.Size(200, 30)
     $GCbutton1.Location     = New-Object System.Drawing.Point(120, 60)
     $GCButton1.Text         = "Port 1"
-    $GCButton1.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=1" -Command "prof1"})
+    $GCButton1.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=1"})
     $form.Controls.Add($GCbutton1)
 
 
@@ -200,7 +213,7 @@ Function Select-Input {
     $GCbutton2.Size         = New-Object System.Drawing.Size(200, 30)
     $GCbutton2.Location     = New-Object System.Drawing.Point(120, 90)
     $GCButton2.Text         = "Port 2"
-    $GCButton2.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=2" -Command "prof2"})
+    $GCButton2.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=2"})
     $form.Controls.Add($GCbutton2)
 
 
@@ -209,7 +222,7 @@ Function Select-Input {
     $GCbutton3.Size         = New-Object System.Drawing.Size(200, 30)
     $GCbutton3.Location     = New-Object System.Drawing.Point(120, 120)
     $GCButton3.Text         = "Port 3"
-    $GCButton3.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=3" -Command "prof3"})
+    $GCButton3.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=3"})
     $form.Controls.Add($GCbutton3)
 
 
@@ -218,7 +231,7 @@ Function Select-Input {
     $GCbutton4.Size         = New-Object System.Drawing.Size(200, 30)
     $GCbutton4.Location     = New-Object System.Drawing.Point(120, 150)
     $GCButton4.Text         = "Port 4"
-    $GCButton4.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=4" -Command "prof4"})
+    $GCButton4.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=4"})
     $form.Controls.Add($GCbutton4)
 
 
@@ -227,7 +240,7 @@ Function Select-Input {
     $GCbutton5.Size         = New-Object System.Drawing.Size(200, 30)
     $GCbutton5.Location     = New-Object System.Drawing.Point(120, 180)
     $GCButton5.Text         = "Port 5"
-    $GCButton5.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=5" -Command "prof5"})
+    $GCButton5.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=5"})
     $form.Controls.Add($GCbutton5)
 
 
@@ -236,7 +249,7 @@ Function Select-Input {
     $GCbutton6.Size         = New-Object System.Drawing.Size(200, 30)
     $GCbutton6.Location     = New-Object System.Drawing.Point(120, 210)
     $GCButton6.Text         = "Port 6"
-    $GCButton6.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=6" -Command "prof6"})
+    $GCButton6.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=6"})
     $form.Controls.Add($GCbutton6)
 
 
@@ -245,7 +258,7 @@ Function Select-Input {
     $GCbutton7.Size         = New-Object System.Drawing.Size(200, 30)
     $GCbutton7.Location     = New-Object System.Drawing.Point(120, 240)
     $GCButton7.Text         = "Port 7"
-    $GCButton7.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=7" -Command "prof7"})
+    $GCButton7.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=7"})
     $form.Controls.Add($GCbutton7)
 
 
@@ -254,7 +267,7 @@ Function Select-Input {
     $GCbutton8.Size         = New-Object System.Drawing.Size(200, 30)
     $GCbutton8.Location     = New-Object System.Drawing.Point(120, 270)
     $GCButton8.Text = "Port 8"
-    $GCButton8.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=8" -Command "prof8"})
+    $GCButton8.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=8"})
     $form.Controls.Add($GCbutton8)
 
 
@@ -263,23 +276,11 @@ Function Select-Input {
     $GCbutton0.Size         = New-Object System.Drawing.Size(200, 30)
     $GCbutton0.Location     = New-Object System.Drawing.Point(120, 300)
     $GCButton0.Text         = "Auto Detect"
-    $GCButton0.Add_Click({Switch-Input -URL "http://$GamesCareIP/ports?force=0" -Command "ok"})
+    $GCButton0.Add_Click({
+        $Result = (Switch-Input -URL "http://$GamesCareIP/ports?force=0").active
+        If ($Result -ne 0) {Write-Host "Active device found on port $Result"}
+        })
     $form.Controls.Add($GCbutton0)
-
-
-            #GamesCare Button Reset
-#   $GCbuttonR              = New-Object System.Windows.Forms.Button
-#   $GCbuttonR.Size         = New-Object System.Drawing.Size(120, 30)
-#    $GCbuttonR.Location     = New-Object System.Drawing.Point(320, 150)
-#    $GCButtonR.Text         = "Reboot"
-#    $GCButtonR.Add_Click({
-#    Write-Host "Rebooting Switch"
-#            $result         = Invoke-RestMethod -Uri "http://$GamesCareIP/settings?reboot=1" -Method Get -ErrorAction Ignore # Will timeout, to be expected.
-#            $portsel        = $result.active
-#            $label.Text     = "Current Port: $portsel"
-#            })
-    #  $form.Controls.Add($GCbuttonR) - Don't add, behaves strangely.
-
 
     # Create a label for Rt4K settings
     $label2                 = New-Object System.Windows.Forms.Label
